@@ -1,2 +1,2 @@
-# Test-TlsProtocol
-Query remote systems to identify all TLS protocols supported and retrieve remote certificate information.
+# Test-TlsProtocols
+Outputs the SSL/TLS protocols that the client is able to successfully use to connect to a server using fqdn or ip.
