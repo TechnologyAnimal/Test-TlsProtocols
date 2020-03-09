@@ -25,15 +25,13 @@
 .LINK
     https://github.com/TechnologyAnimal/Test-TlsProtocols
 
-.PARAMETER Fqdn
-    The fully qualified domain name of the remote computer to connect to.
+.PARAMETER Server
+    The fully qualified domain name or IP address of the remote computer to connect to.
+    * Dns will resolve an ip address to a fully qualified domain name.
+    * Using an IP address will technically work, though, a DNS lookup to resolve the server FDQN will be used. If an IP address hosts multiple servers, an unpredictable FQDN will get selected as the FQDN to test. The end result may not get routed to the correct server.
 
 .PARAMETER Ports
     A list of remote ports to connect to. The default is 443. Each additional port will return another result.
-
-.PARAMETER Ip
-    An ip address to connect to. Dns will resolve an ip address to a fully qualified domain name.
-    The result of the dns query will be used if a fqdn was not provided as input.
 
 .PARAMETER IncludeErrorMessages
     This switch will include detailed error messages about failed connections for each tls protocol.
@@ -56,8 +54,6 @@
 .PARAMETER OutputFormat
     This will convert the results to the corresponding output object, and if appropriate, and format. See below for a description of what each option returns as. The default is PSObject.
 
-    Available output formats: Csv, HashTable, Json, OrderedDictionary, PSObject, Xml
-
     Csv returns a System.String object in CSV format.
     HashTable returns a System.Collections.Hashtable object.
     Json returns a System.String object in JSON format.
@@ -66,7 +62,7 @@
     Xml returns a System.Xml.XmlDocument object.
 
 .EXAMPLE
-    Test-TlsProtocols -Fqdn "github.com" -IncludeRemoteCertificateInfo
+    Test-TlsProtocols -Server "github.com" -IncludeRemoteCertificateInfo
 
     Fqdn                  : github.com
     IP                    : 192.30.253.113
@@ -86,7 +82,7 @@
     Tls13                 : True
 
 .EXAMPLE
-    Test-TlsProtocols -Fqdn "github.com" -OutputFormat PSObject
+    Test-TlsProtocols -Server "github.com" -OutputFormat PSObject
 
     Fqdn  : github.com
     IP    : 140.82.114.3
@@ -99,7 +95,7 @@
     Tls13 : True
 
 .EXAMPLE
-    Test-TlsProtocols -Fqdn "google.com" -OutputFormat Json
+    Test-TlsProtocols -Server "google.com" -OutputFormat Json
 
     {
         "Fqdn": "google.com",
@@ -114,7 +110,7 @@
     }
 
 .Example
-    Test-TlsProtocols -Fqdn "google.com" -ReturnRemoteCertificateOnly
+    Test-TlsProtocols -Server "google.com" -ReturnRemoteCertificateOnly
 
     Thumbprint                                Subject              EnhancedKeyUsageList
     ----------                                -------              --------------------
@@ -122,9 +118,8 @@
 #>
 function Test-TlsProtocols {
     param(
-        [string]$Fqdn,
+        [Parameter(Mandatory)][string]$Server,
         [int32[]]$Ports = 443,
-        [string]$Ip,
         [ValidateSet("PSObject", "Csv", "HashTable", "Json", "OrderedDictionary", "Xml")]
         [String]$OutputFormat = "PSObject",
         [switch]$ExportRemoteCertificate,
@@ -134,20 +129,18 @@ function Test-TlsProtocols {
         [ValidateSet(1, 2, 3, 4, 5)][int32]$TimeoutSeconds = 2
     )
     begin {
-        # Validate input
-        if ([string]::IsNullOrWhiteSpace($Fqdn) -and [string]::IsNullOrWhiteSpace($Ip)) {
-            Write-Error "`$Fqdn and `$Ip are both `$null`. At least one of these parameters is required to test ssl protocols." -ErrorAction Stop
+        # Resolve input
+        if ($Server -as [IPAddress]) {
+            $Fqdn = [System.Net.DNS]::GetHostByAddress($Server).HostName
+            $Ip = $Server
+            Write-Verbose "Server is an IP address with FQDN: $Fqdn"
         }
-        if (-not $Ip) {
-            Write-Verbose "No ip as input."
-            $Ip = [System.Net.DNS]::GetHostByName($Fqdn).AddressList.IPAddressToString | Select-Object -First 1
-            Write-Verbose "Ip is $ip"
+        else {
+            $Fqdn = $Server
+            $Ip = [System.Net.DNS]::GetHostByName($Server).AddressList.IPAddressToString | Select-Object -First 1
+            Write-Verbose "Server is an FQDN with IP: $ip"
         }
-        if (-not $Fqdn) {
-            Write-Verbose "No fqdn as input."
-            $Fqdn = [System.Net.DNS]::GetHostByAddress($ip).HostName
-            Write-Verbose "Fqdn is $fqdn"
-        }
+
         # TO-DO: Add client TLS configuration settings validation, i.e. check registry for supported client tls protocols and the *nix equivalent.
         # Check all Ssl/Tls protocols
         $ProtocolNames = ([System.Security.Authentication.SslProtocols]).GetEnumValues().Where{ $_ -ne 'Default' -and $_ -ne 'None' } # Tls13, Tls12, Tls11, Tls, Ssl3, Ssl2
@@ -160,27 +153,29 @@ function Test-TlsProtocols {
         $ports | ForEach-Object { Write-Verbose "$_" }
         foreach ($Port in $Ports) {
             # Create Custom Object to store TLS Protocol Status
-            $ProtocolStatus = [Ordered]@{ }
-            $ProtocolStatus.Add("Fqdn", $Fqdn)
-            $ProtocolStatus.Add("IP", $Ip)
-            $ProtocolStatus.Add("Port", $Port)
+            $ProtocolStatus = [Ordered]@{
+                Fqdn = $Fqdn
+                IP   = $Ip
+                Port = $Port
+            }
             [PSCustomObject]$ProtocolStatus | ForEach-Object { Write-Verbose "$_" }
-            $OpenPort = Test-Connection $Fqdn -TCPPort $Port -TimeoutSeconds $TimeoutSeconds
-            Write-Verbose "Connection to $fqdn`:$port is available - $OpenPort"
+            $OpenPort = Test-Connection $Server -TCPPort $Port -TimeoutSeconds $TimeoutSeconds
+            Write-Verbose "Connection to $Server`:$Port is available - $OpenPort"
             if ($OpenPort) {
                 # Retrieve remote certificate information when IncludeRemoteCertificateInfo switch is enabled.
                 if ($IncludeRemoteCertificateInfo) {
                     Write-Verbose "Including remote certificate information."
-                    $ProtocolStatus.Add("CertificateThumbprint", 'unknown')
-                    $ProtocolStatus.Add("CertificateSubject", 'unknown')
-                    $ProtocolStatus.Add("CertificateIssuer", 'unknown')
-                    $ProtocolStatus.Add("CertificateIssued", 'unknown')
-                    $ProtocolStatus.Add("CertificateExpires", 'unknown')
-                    $ProtocolStatus.Add("SignatureAlgorithm", 'unknown')
+                    $ProtocolStatus += [ordered]@{
+                        CertificateThumbprint = 'unknown'
+                        CertificateSubject    = 'unknown'
+                        CertificateIssuer     = 'unknown'
+                        CertificateIssued     = 'unknown'
+                        CertificateExpires    = 'unknown'
+                        SignatureAlgorithm    = 'unknown'
+                    }
                 }
 
-                $ProtocolNames | ForEach-Object {
-                    $ProtocolName = $_
+                foreach ($ProtocolName in $ProtocolNames) {
                     Write-Verbose "Starting test on $ProtocolName"
                     $ProtocolStatus.Add($ProtocolName, 'unknown')
                     if ($IncludeErrorMessages) {
@@ -250,11 +245,10 @@ function Test-TlsProtocols {
             else {
                 # Supported Tls protocols are unknown when a connection cannot be established.
                 Write-Verbose "Supported Tls protocols are unknown when a connection cannot be established."
-                $ProtocolNames | ForEach-Object {
-                    $ProtocolName = $_
+                foreach ($ProtocolName in $ProtocolNames) {
                     $ProtocolStatus.Add($ProtocolName, 'unknown')
                     if ($IncludeErrorMessages) {
-                        $ProtocolStatus.Add("$ProtocolName`ErrorMsg", "Could not connect to $fqdn on TCP port $port`.")
+                        $ProtocolStatus.Add("$ProtocolName`ErrorMsg", "Could not connect to $server on TCP port $port`.")
                     }
                 }
             }
