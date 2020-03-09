@@ -1,15 +1,15 @@
 <#
- .DESCRIPTION
-   Outputs the SSL/TLS protocols that the client is able to successfully use to connect to a server using fqdn or ip.
-   Optionally outputs remote certificate information.
-   Optionally exports remote certificates in .cer format.
- 
- .NOTES
+.DESCRIPTION
+    Outputs the SSL/TLS protocols that the client is able to successfully use to connect to a server using fqdn or ip.
+    Optionally outputs remote certificate information.
+    Optionally exports remote certificates in .cer format.
+
+.NOTES
     Special thanks to Chris Duck's hard work from 2014 that inspired me to get started on this project.
     You can learn more about it on his blog at
 
         http://blog.whatsupduck.net/2014/10/checking-ssl-and-tls-versions-with-powershell.html
-    
+
     Licensed under the Apache License, Version 2.0 (the "License");
     you may not use this file except in compliance with the License.
     You may obtain a copy of the License at
@@ -24,7 +24,7 @@
 
 .LINK
     https://github.com/TechnologyAnimal/Test-TlsProtocols
- 
+
 .PARAMETER Fqdn
     The fully qualified domain name of the remote computer to connect to.
 
@@ -78,7 +78,7 @@
     IP                    : 192.30.253.113
     Port                  : 443
     CertificateThumbprint : CA06F56B258B7A0D4F2B05470939478651151984
-    CertificateSubject    : CN=github.com, O="GitHub, Inc.", L=San Francisco, S=California, C=US, SERIALNUMBER=5157550, OID.1.3.6.1.4.1.311.60.2.1.2=Delaware, OID.1.3.6.1.4.1.311.60.2.1.3=US, OID.2.5.4.15=Private 
+    CertificateSubject    : CN=github.com, O="GitHub, Inc.", L=San Francisco, S=California, C=US, SERIALNUMBER=5157550, OID.1.3.6.1.4.1.311.60.2.1.2=Delaware, OID.1.3.6.1.4.1.311.60.2.1.3=US, OID.2.5.4.15=Private
                             Organization
     CertificateIssuer     : CN=DigiCert SHA2 Extended Validation Server CA, OU=www.digicert.com, O=DigiCert Inc, C=US
     CertificateIssued     : 5/7/2018 5:00:00 PM
@@ -124,24 +124,24 @@
 
     Thumbprint                                Subject              EnhancedKeyUsageList
     ----------                                -------              --------------------
-    7D0384E3195E04043DBED29FF58815857278240C  CN=*.google.com, O=… 
+    7D0384E3195E04043DBED29FF58815857278240C  CN=*.google.com, O=…
 #>
-function Test-TlsProtocols {                         
+function Test-TlsProtocols {
     param(
-        [Parameter(Mandatory=$false)][string]$Fqdn,
-        [Parameter(Mandatory=$false)][int32[]]$Ports = 443,
-        [Parameter(Mandatory=$false)][string]$Ip,
-        [Parameter(Mandatory=$false)][switch]$AsCSV,
-        [Parameter(Mandatory=$false)][switch]$AsHashTable,
-        [Parameter(Mandatory=$false)][switch]$AsJson,
-        [Parameter(Mandatory=$false)][switch]$AsOrderedDictionary,
-        [Parameter(Mandatory=$false)][switch]$AsPSObject,
-        [Parameter(Mandatory=$false)][switch]$AsXml,
-        [Parameter(Mandatory=$false)][switch]$ExportRemoteCertificate,
-        [Parameter(Mandatory=$false)][switch]$IncludeErrorMessages,
-        [Parameter(Mandatory=$false)][switch]$IncludeRemoteCertificateInfo,
-        [Parameter(Mandatory=$false)][switch]$ReturnRemoteCertificateOnly,
-        [Parameter(Mandatory=$false)][ValidateSet(1,2,3,4,5)][int32]$TimeoutSeconds = 2
+        [string]$Fqdn,
+        [int32[]]$Ports = 443,
+        [string]$Ip,
+        [switch]$AsCSV,
+        [switch]$AsHashTable,
+        [switch]$AsJson,
+        [switch]$AsOrderedDictionary,
+        [switch]$AsPSObject,
+        [switch]$AsXml,
+        [switch]$ExportRemoteCertificate,
+        [switch]$IncludeErrorMessages,
+        [switch]$IncludeRemoteCertificateInfo,
+        [switch]$ReturnRemoteCertificateOnly,
+        [ValidateSet(1, 2, 3, 4, 5)][int32]$TimeoutSeconds = 2
     )
     begin {
         # Validate input
@@ -160,21 +160,21 @@ function Test-TlsProtocols {
         }
         # TO-DO: Add client TLS configuration settings validation, i.e. check registry for supported client tls protocols and the *nix equivalent.
         # Check all Ssl/Tls protocols
-        $ProtocolNames = ([System.Security.Authentication.SslProtocols]).GetEnumValues().Where{$_ -ne 'Default' -and $_ -ne 'None'} # Tls13, Tls12, Tls11, Tls, Ssl3, Ssl2
+        $ProtocolNames = ([System.Security.Authentication.SslProtocols]).GetEnumValues().Where{ $_ -ne 'Default' -and $_ -ne 'None' } # Tls13, Tls12, Tls11, Tls, Ssl3, Ssl2
         Write-Verbose "Supported tls protocols:"
-        $ProtocolNames | ForEach-Object { Write-Verbose "$_"}
+        $ProtocolNames | ForEach-Object { Write-Verbose "$_" }
     }
     process {
         # TO-DO: Add option to enable RemoteCertificateValidationCallback (current implementation accepts all certificates)
         Write-Verbose "Scanning $($ports.count) ports:"
-        $ports | ForEach-Object { Write-Verbose "$_"}
+        $ports | ForEach-Object { Write-Verbose "$_" }
         foreach ($Port in $Ports) {
             # Create Custom Object to store TLS Protocol Status
-            $ProtocolStatus = [Ordered]@{}
+            $ProtocolStatus = [Ordered]@{ }
             $ProtocolStatus.Add("Fqdn", $Fqdn)
             $ProtocolStatus.Add("IP", $Ip)
             $ProtocolStatus.Add("Port", $Port)
-            [PSCustomObject]$ProtocolStatus | ForEach-Object { Write-Verbose "$_"}
+            [PSCustomObject]$ProtocolStatus | ForEach-Object { Write-Verbose "$_" }
             $OpenPort = Test-Connection $Fqdn -TCPPort $Port -TimeoutSeconds $TimeoutSeconds
             Write-Verbose "Connection to $fqdn`:$port is available - $OpenPort"
             if ($OpenPort) {
@@ -197,12 +197,12 @@ function Test-TlsProtocols {
                         $ProtocolStatus.Add("$ProtocolName`ErrorMsg", $false)
                     }
                     try {
-                        $Socket = [System.Net.Sockets.Socket]::new([System.Net.Sockets.SocketType]::Stream,[System.Net.Sockets.ProtocolType]::Tcp)
+                        $Socket = [System.Net.Sockets.Socket]::new([System.Net.Sockets.SocketType]::Stream, [System.Net.Sockets.ProtocolType]::Tcp)
                         Write-Verbose "Attempting socket connection to $fqdn`:$port"
                         $Socket.Connect($fqdn, $Port)
                         Write-Verbose "Connection succeeded."
                         $NetStream = [System.Net.Sockets.NetworkStream]::new($Socket, $true)
-                        $SslStream = [System.Net.Security.SslStream]::new($NetStream, $true, {$true}) # Ignore certificate validation errors
+                        $SslStream = [System.Net.Security.SslStream]::new($NetStream, $true, { $true }) # Ignore certificate validation errors
                         Write-Verbose "Attempting to authenticate to $fqdn as a client over $ProtocolName"
                         $SslStream.AuthenticateAsClient($fqdn, $null, $ProtocolName, $false)
                         $ProtocolStatus[$ProtocolName] = $true # success
@@ -234,7 +234,8 @@ function Test-TlsProtocols {
                             $RemoteCertificate
                             break;
                         }
-                    } catch {
+                    }
+                    catch {
                         $ProtocolStatus[$ProtocolName] = $false # failed to establish tls connection
                         Write-Verbose "Unable to establish tls connection with $fqdn`:$port over $ProtocolName"
                         # Collect detailed error message about why the tls connection failed
@@ -244,7 +245,7 @@ function Test-TlsProtocols {
                             if ($NestedException) { $emsg = $NestedException }
                             else { $emsg = $e.Exception.InnerException.Message }
                             Write-Verbose $emsg
-                            $ProtocolStatus["$ProtocolName`ErrorMsg"] =  $emsg
+                            $ProtocolStatus["$ProtocolName`ErrorMsg"] = $emsg
                         }
                     }
                     finally {
@@ -255,7 +256,8 @@ function Test-TlsProtocols {
                         if ($Socket) { $Socket.Dispose() }
                     }
                 }
-            } else {
+            }
+            else {
                 # Supported Tls protocols are unknown when a connection cannot be established.
                 Write-Verbose "Supported Tls protocols are unknown when a connection cannot be established."
                 $ProtocolNames | ForEach-Object {
