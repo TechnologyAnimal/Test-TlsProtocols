@@ -53,23 +53,17 @@
     If a remote system port is unreachable, the script will not attempt to establish a socket connection and all supported
     protocols will be unknown. Default value is 2 seconds.
 
-.PARAMETER AsCSV
-    Enabling this switch will output the results in System.String object in CSV format.
+.PARAMETER OutputFormat
+    This will convert the results to the corresponding output object, and if appropriate, and format. See below for a description of what each option returns as. The default is PSObject.
 
-.PARAMETER AsHashTable
-    Enabling this switch will output the results as a System.Collections.Hashtable object.
+    Available output formats: Csv, HashTable, Json, OrderedDictionary, PSObject, Xml
 
-.PARAMETER AsJson
-    Enabling this switch will output the results as a System.String object in JSON format.
-
-.PARAMETER AsOrderedDictionary
-    Enabling this switch will output the results as a System.Collections.Specialized.OrderedDictionary object.
-
-.PARAMETER AsPSObject
-    Enabling this switch will output the results as a System.Management.Automation.PSCustomObject object. This is default.
-
-.PARAMETER AsXML
-    Enabling this switch will output the results as a System.Xml.XmlDocument object.
+    Csv returns a System.String object in CSV format.
+    HashTable returns a System.Collections.Hashtable object.
+    Json returns a System.String object in JSON format.
+    OrderedDictionary returns a System.Collections.Specialized.OrderedDictionary object.
+    PSObject returns a System.Management.Automation.PSCustomObject object.
+    Xml returns a System.Xml.XmlDocument object.
 
 .EXAMPLE
     Test-TlsProtocols -Fqdn "github.com" -IncludeRemoteCertificateInfo
@@ -92,7 +86,7 @@
     Tls13                 : True
 
 .EXAMPLE
-    Test-TlsProtocols -Fqdn "github.com" -AsPSObject
+    Test-TlsProtocols -Fqdn "github.com" -OutputFormat PSObject
 
     Fqdn  : github.com
     IP    : 140.82.114.3
@@ -105,7 +99,7 @@
     Tls13 : True
 
 .EXAMPLE
-    Test-TlsProtocols -Fqdn "google.com" -AsJson
+    Test-TlsProtocols -Fqdn "google.com" -OutputFormat Json
 
     {
         "Fqdn": "google.com",
@@ -131,12 +125,8 @@ function Test-TlsProtocols {
         [string]$Fqdn,
         [int32[]]$Ports = 443,
         [string]$Ip,
-        [switch]$AsCSV,
-        [switch]$AsHashTable,
-        [switch]$AsJson,
-        [switch]$AsOrderedDictionary,
-        [switch]$AsPSObject,
-        [switch]$AsXml,
+        [ValidateSet("PSObject", "Csv", "HashTable", "Json", "OrderedDictionary", "Xml")]
+        [String]$OutputFormat = "PSObject",
         [switch]$ExportRemoteCertificate,
         [switch]$IncludeErrorMessages,
         [switch]$IncludeRemoteCertificateInfo,
@@ -270,17 +260,13 @@ function Test-TlsProtocols {
             }
 
             # Various switches to generate output in desired format of choice
-            if ($AsCSV) { [PSCustomObject]$ProtocolStatus | ConvertTo-Csv -NoTypeInformation }
-            if ($AsHashTable) { [hashtable]$ProtocolStatus }
-            if ($AsJson) { [PSCustomObject]$ProtocolStatus | ConvertTo-Json }
-            if ($AsOrderedDictionary) { $ProtocolStatus }
-            if ($AsPSObject) { [PSCustomObject]$ProtocolStatus }
-            if ($AsXml) { [PSCustomObject]$ProtocolStatus | ConvertTo-Xml -NoTypeInformation }
-
-            # Default to PSObject
-            if ($AsCsv -eq $false -and $AsHashTable -eq $false -and $AsJson -eq $false -and $AsOrderedDictionary -eq $false -and $AsPSObject -eq $false -and $AsXml -eq $false) {
-                Write-Verbose "Returning in default format - PSOBject."
-                [PSCustomObject]$ProtocolStatus
+            switch ($OutputFormat) {
+                "Csv" { [PSCustomObject]$ProtocolStatus | ConvertTo-Csv -NoTypeInformation }
+                "HashTable" { [hashtable]$ProtocolStatus }
+                "Json" { [PSCustomObject]$ProtocolStatus | ConvertTo-Json }
+                "OrderedDictionary" { $ProtocolStatus }
+                "PSObject" { [PSCustomObject]$ProtocolStatus }
+                "Xml" { [PSCustomObject]$ProtocolStatus | ConvertTo-Xml -NoTypeInformation }
             }
         }
     }
