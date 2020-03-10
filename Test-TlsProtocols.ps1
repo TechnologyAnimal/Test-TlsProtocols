@@ -61,6 +61,9 @@
     PSObject returns a System.Management.Automation.PSCustomObject object.
     Xml returns a System.Xml.XmlDocument object.
 
+.PARAMETER WhatIf
+    This will list the Server, Ports, and ProtocolNames that would get tested if this switch is omitted or set to false.
+
 .EXAMPLE
     Test-TlsProtocols -Server "github.com" -IncludeRemoteCertificateInfo
 
@@ -117,6 +120,7 @@
     7D0384E3195E04043DBED29FF58815857278240C  CN=*.google.com, O=…
 #>
 function Test-TlsProtocols {
+    [cmdletbinding(SupportsShouldProcess)]
     param(
         [Parameter(Mandatory)][string]$Server,
         [int32[]]$Ports = 443,
@@ -159,108 +163,110 @@ function Test-TlsProtocols {
                 Port = $Port
             }
             [PSCustomObject]$ProtocolStatus | ForEach-Object { Write-Verbose "$_" }
-            $OpenPort = Test-Connection $Server -TCPPort $Port -TimeoutSeconds $TimeoutSeconds
-            Write-Verbose "Connection to $Server`:$Port is available - $OpenPort"
-            if ($OpenPort) {
-                # Retrieve remote certificate information when IncludeRemoteCertificateInfo switch is enabled.
-                if ($IncludeRemoteCertificateInfo) {
-                    Write-Verbose "Including remote certificate information."
-                    $ProtocolStatus += [ordered]@{
-                        CertificateThumbprint = 'unknown'
-                        CertificateSubject    = 'unknown'
-                        CertificateIssuer     = 'unknown'
-                        CertificateIssued     = 'unknown'
-                        CertificateExpires    = 'unknown'
-                        SignatureAlgorithm    = 'unknown'
-                    }
-                }
-
-                foreach ($ProtocolName in $ProtocolNames) {
-                    Write-Verbose "Starting test on $ProtocolName"
-                    $ProtocolStatus.Add($ProtocolName, 'unknown')
-                    if ($IncludeErrorMessages) {
-                        $ProtocolStatus.Add("$ProtocolName`ErrorMsg", $false)
-                    }
-                    try {
-                        $Socket = [System.Net.Sockets.Socket]::new([System.Net.Sockets.SocketType]::Stream, [System.Net.Sockets.ProtocolType]::Tcp)
-                        Write-Verbose "Attempting socket connection to $fqdn`:$port"
-                        $Socket.Connect($fqdn, $Port)
-                        Write-Verbose "Connection succeeded."
-                        $NetStream = [System.Net.Sockets.NetworkStream]::new($Socket, $true)
-                        $SslStream = [System.Net.Security.SslStream]::new($NetStream, $true, { $true }) # Ignore certificate validation errors
-                        Write-Verbose "Attempting to authenticate to $fqdn as a client over $ProtocolName"
-                        $SslStream.AuthenticateAsClient($fqdn, $null, $ProtocolName, $false)
-                        $ProtocolStatus[$ProtocolName] = $true # success
-                        Write-Verbose "Successfully authenticated to $fqdn`:$port"
-                        $RemoteCertificate = [System.Security.Cryptography.X509Certificates.X509Certificate2]$SslStream.RemoteCertificate
-
-                        if ($IncludeRemoteCertificateInfo) {
-                            # Store remote certificate information if it hasn't already been collected
-                            if ($ProtocolStatus.CertificateThumbprint -eq 'unknown' -and $RemoteCertificate.Thumbprint) {
-                                $ProtocolStatus["CertificateThumbprint"] = $RemoteCertificate.Thumbprint
-                                $ProtocolStatus["CertificateSubject"] = $RemoteCertificate.Subject
-                                $ProtocolStatus["CertificateIssuer"] = $RemoteCertificate.Issuer
-                                $ProtocolStatus["CertificateIssued"] = $RemoteCertificate.NotBefore
-                                $ProtocolStatus["CertificateExpires"] = $RemoteCertificate.NotAfter
-                                $ProtocolStatus["SignatureAlgorithm"] = $RemoteCertificate.SignatureAlgorithm.FriendlyName
-                            }
-                        }
-
-                        if ($ExportRemoteCertificate) {
-                            $CertPath = "$fqdn.cer"
-                            if (-not (Test-Path $CertPath)) {
-                                Write-Host "Exporting $fqdn.cer to $($(Get-Location).path)" -ForegroundColor Green
-                                $RemoteCertificate.Export('Cert') | Set-Content "$fqdn.cer" -AsByteStream
-                            }
-                        }
-
-                        if ($ReturnRemoteCertificateOnly) {
-                            Write-Verbose "Returning $fqdn remote certificate only."
-                            $RemoteCertificate
-                            break;
+            if ($pscmdlet.ShouldProcess($Server, "Test the following protocols: $ProtocolNames")) {
+                $OpenPort = Test-Connection $Server -TCPPort $Port -TimeoutSeconds $TimeoutSeconds
+                Write-Verbose "Connection to $Server`:$Port is available - $OpenPort"
+                if ($OpenPort) {
+                    # Retrieve remote certificate information when IncludeRemoteCertificateInfo switch is enabled.
+                    if ($IncludeRemoteCertificateInfo) {
+                        Write-Verbose "Including remote certificate information."
+                        $ProtocolStatus += [ordered]@{
+                            CertificateThumbprint = 'unknown'
+                            CertificateSubject    = 'unknown'
+                            CertificateIssuer     = 'unknown'
+                            CertificateIssued     = 'unknown'
+                            CertificateExpires    = 'unknown'
+                            SignatureAlgorithm    = 'unknown'
                         }
                     }
-                    catch {
-                        $ProtocolStatus[$ProtocolName] = $false # failed to establish tls connection
-                        Write-Verbose "Unable to establish tls connection with $fqdn`:$port over $ProtocolName"
-                        # Collect detailed error message about why the tls connection failed
+
+                    foreach ($ProtocolName in $ProtocolNames) {
+                        Write-Verbose "Starting test on $ProtocolName"
+                        $ProtocolStatus.Add($ProtocolName, 'unknown')
                         if ($IncludeErrorMessages) {
-                            $e = $error[0]
-                            $NestedException = $e.Exception.InnerException.InnerException.Message
-                            if ($NestedException) { $emsg = $NestedException }
-                            else { $emsg = $e.Exception.InnerException.Message }
-                            Write-Verbose $emsg
-                            $ProtocolStatus["$ProtocolName`ErrorMsg"] = $emsg
+                            $ProtocolStatus.Add("$ProtocolName`ErrorMsg", $false)
+                        }
+                        try {
+                            $Socket = [System.Net.Sockets.Socket]::new([System.Net.Sockets.SocketType]::Stream, [System.Net.Sockets.ProtocolType]::Tcp)
+                            Write-Verbose "Attempting socket connection to $fqdn`:$port"
+                            $Socket.Connect($fqdn, $Port)
+                            Write-Verbose "Connection succeeded."
+                            $NetStream = [System.Net.Sockets.NetworkStream]::new($Socket, $true)
+                            $SslStream = [System.Net.Security.SslStream]::new($NetStream, $true, { $true }) # Ignore certificate validation errors
+                            Write-Verbose "Attempting to authenticate to $fqdn as a client over $ProtocolName"
+                            $SslStream.AuthenticateAsClient($fqdn, $null, $ProtocolName, $false)
+                            $ProtocolStatus[$ProtocolName] = $true # success
+                            Write-Verbose "Successfully authenticated to $fqdn`:$port"
+                            $RemoteCertificate = [System.Security.Cryptography.X509Certificates.X509Certificate2]$SslStream.RemoteCertificate
+
+                            if ($IncludeRemoteCertificateInfo) {
+                                # Store remote certificate information if it hasn't already been collected
+                                if ($ProtocolStatus.CertificateThumbprint -eq 'unknown' -and $RemoteCertificate.Thumbprint) {
+                                    $ProtocolStatus["CertificateThumbprint"] = $RemoteCertificate.Thumbprint
+                                    $ProtocolStatus["CertificateSubject"] = $RemoteCertificate.Subject
+                                    $ProtocolStatus["CertificateIssuer"] = $RemoteCertificate.Issuer
+                                    $ProtocolStatus["CertificateIssued"] = $RemoteCertificate.NotBefore
+                                    $ProtocolStatus["CertificateExpires"] = $RemoteCertificate.NotAfter
+                                    $ProtocolStatus["SignatureAlgorithm"] = $RemoteCertificate.SignatureAlgorithm.FriendlyName
+                                }
+                            }
+
+                            if ($ExportRemoteCertificate) {
+                                $CertPath = "$fqdn.cer"
+                                if (-not (Test-Path $CertPath)) {
+                                    Write-Host "Exporting $fqdn.cer to $($(Get-Location).path)" -ForegroundColor Green
+                                    $RemoteCertificate.Export('Cert') | Set-Content "$fqdn.cer" -AsByteStream
+                                }
+                            }
+
+                            if ($ReturnRemoteCertificateOnly) {
+                                Write-Verbose "Returning $fqdn remote certificate only."
+                                $RemoteCertificate
+                                break;
+                            }
+                        }
+                        catch {
+                            $ProtocolStatus[$ProtocolName] = $false # failed to establish tls connection
+                            Write-Verbose "Unable to establish tls connection with $fqdn`:$port over $ProtocolName"
+                            # Collect detailed error message about why the tls connection failed
+                            if ($IncludeErrorMessages) {
+                                $e = $error[0]
+                                $NestedException = $e.Exception.InnerException.InnerException.Message
+                                if ($NestedException) { $emsg = $NestedException }
+                                else { $emsg = $e.Exception.InnerException.Message }
+                                Write-Verbose $emsg
+                                $ProtocolStatus["$ProtocolName`ErrorMsg"] = $emsg
+                            }
+                        }
+                        finally {
+                            # Free up system memory/garbage collection
+                            Write-Verbose "Garbage collection."
+                            if ($SslStream) { $SslStream.Dispose() }
+                            if ($NetStream) { $NetStream.Dispose() }
+                            if ($Socket) { $Socket.Dispose() }
                         }
                     }
-                    finally {
-                        # Free up system memory/garbage collection
-                        Write-Verbose "Garbage collection."
-                        if ($SslStream) { $SslStream.Dispose() }
-                        if ($NetStream) { $NetStream.Dispose() }
-                        if ($Socket) { $Socket.Dispose() }
+                }
+                else {
+                    # Supported Tls protocols are unknown when a connection cannot be established.
+                    Write-Verbose "Supported Tls protocols are unknown when a connection cannot be established."
+                    foreach ($ProtocolName in $ProtocolNames) {
+                        $ProtocolStatus.Add($ProtocolName, 'unknown')
+                        if ($IncludeErrorMessages) {
+                            $ProtocolStatus.Add("$ProtocolName`ErrorMsg", "Could not connect to $server on TCP port $port`.")
+                        }
                     }
                 }
-            }
-            else {
-                # Supported Tls protocols are unknown when a connection cannot be established.
-                Write-Verbose "Supported Tls protocols are unknown when a connection cannot be established."
-                foreach ($ProtocolName in $ProtocolNames) {
-                    $ProtocolStatus.Add($ProtocolName, 'unknown')
-                    if ($IncludeErrorMessages) {
-                        $ProtocolStatus.Add("$ProtocolName`ErrorMsg", "Could not connect to $server on TCP port $port`.")
-                    }
-                }
-            }
 
-            # Various switches to generate output in desired format of choice
-            switch ($OutputFormat) {
-                "Csv" { [PSCustomObject]$ProtocolStatus | ConvertTo-Csv -NoTypeInformation }
-                "HashTable" { [hashtable]$ProtocolStatus }
-                "Json" { [PSCustomObject]$ProtocolStatus | ConvertTo-Json }
-                "OrderedDictionary" { $ProtocolStatus }
-                "PSObject" { [PSCustomObject]$ProtocolStatus }
-                "Xml" { [PSCustomObject]$ProtocolStatus | ConvertTo-Xml -NoTypeInformation }
+                # Various switches to generate output in desired format of choice
+                switch ($OutputFormat) {
+                    "Csv" { [PSCustomObject]$ProtocolStatus | ConvertTo-Csv -NoTypeInformation }
+                    "HashTable" { [hashtable]$ProtocolStatus }
+                    "Json" { [PSCustomObject]$ProtocolStatus | ConvertTo-Json }
+                    "OrderedDictionary" { $ProtocolStatus }
+                    "PSObject" { [PSCustomObject]$ProtocolStatus }
+                    "Xml" { [PSCustomObject]$ProtocolStatus | ConvertTo-Xml -NoTypeInformation }
+                }
             }
         }
     }
