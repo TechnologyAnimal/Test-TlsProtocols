@@ -164,7 +164,12 @@ function Test-TlsProtocols {
             }
             [PSCustomObject]$ProtocolStatus | ForEach-Object { Write-Verbose "$_" }
             if ($pscmdlet.ShouldProcess($Server, "Test the following protocols: $ProtocolNames")) {
-                $OpenPort = Test-Connection $Server -TCPPort $Port -TimeoutSeconds $TimeoutSeconds
+                if ($PSVersionTable.PSVersion.Major -ge 6) {
+                    $OpenPort = Test-Connection $Server -TCPPort $Port -TimeoutSeconds $TimeoutSeconds
+                }
+                else {
+                    $OpenPort = (Test-NetConnection $Server -Port $Port).TcpTestSucceeded
+                }
                 Write-Verbose "Connection to $Server`:$Port is available - $OpenPort"
                 if ($OpenPort) {
                     # Retrieve remote certificate information when IncludeRemoteCertificateInfo switch is enabled.
