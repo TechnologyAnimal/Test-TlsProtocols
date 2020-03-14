@@ -33,6 +33,10 @@
 .PARAMETER Ports
     A list of remote ports to connect to. The default is 443. Each additional port will return another result.
 
+.PARAMETER ProtocolNames
+    A list of protocols to test. Requires that the client system supports each protocol to test.
+    Some common examples: Tls13, Tls12, Tls11, Tls, Ssl3, Ssl2
+
 .PARAMETER IncludeErrorMessages
     This switch will include detailed error messages about failed connections for each tls protocol.
 
@@ -126,6 +130,7 @@ function Test-TlsProtocols {
         [int32[]]$Ports = 443,
         [ValidateSet("PSObject", "Csv", "HashTable", "Json", "OrderedDictionary", "Xml")]
         [String]$OutputFormat = "PSObject",
+        [string[]]$ProtocolNames,
         [switch]$ExportRemoteCertificate,
         [switch]$IncludeErrorMessages,
         [switch]$IncludeRemoteCertificateInfo,
@@ -133,6 +138,25 @@ function Test-TlsProtocols {
         [ValidateSet(1, 2, 3, 4, 5)][int32]$TimeoutSeconds = 2
     )
     begin {
+        # Validate input
+        # TO-DO: Add client TLS configuration settings validation, i.e. check registry for supported client tls protocols and the *nix equivalent.
+        # Check all Ssl/Tls protocols
+        $SupportedProtocolNames = ([System.Security.Authentication.SslProtocols]).GetEnumValues().Where{ $_ -ne 'Default' -and $_ -ne 'None' }
+        Write-Verbose "Supported tls protocols:"
+        $SupportedProtocolNames | ForEach-Object { Write-Verbose "$_" }
+        if (-not $ProtocolNames) {
+            Write-Verbose "No tls protocols specified. Defaulting to test all support tls protocols."
+            $ProtocolNames = $SupportedProtocolNames
+        }
+        elseif ($UnsupportedProtocolNames = $ProtocolNames.Where{ $_ -notin $SupportedProtocolNames }) {
+            Write-Verbose "Unsupported tls protocol(s) specified. Unable to complete request. "
+            Write-Error -ErrorAction Stop (
+                "Unknown protocol name(s). Please use names from the list of protocol names supported on this system ({0}). You used: {1}" -f
+                ($SupportedProtocolNames -join ", "),
+                ($UnsupportedProtocolNames -join ", ")
+            )
+        }
+
         # Resolve input
         if ($Server -as [IPAddress]) {
             $Fqdn = [System.Net.DNS]::GetHostByAddress($Server).HostName
@@ -144,12 +168,6 @@ function Test-TlsProtocols {
             $Ip = [System.Net.DNS]::GetHostByName($Server).AddressList.IPAddressToString | Select-Object -First 1
             Write-Verbose "Server is an FQDN with IP: $ip"
         }
-
-        # TO-DO: Add client TLS configuration settings validation, i.e. check registry for supported client tls protocols and the *nix equivalent.
-        # Check all Ssl/Tls protocols
-        $ProtocolNames = ([System.Security.Authentication.SslProtocols]).GetEnumValues().Where{ $_ -ne 'Default' -and $_ -ne 'None' } # Tls13, Tls12, Tls11, Tls, Ssl3, Ssl2
-        Write-Verbose "Supported tls protocols:"
-        $ProtocolNames | ForEach-Object { Write-Verbose "$_" }
     }
     process {
         # TO-DO: Add option to enable RemoteCertificateValidationCallback (current implementation accepts all certificates)
