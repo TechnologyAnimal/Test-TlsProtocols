@@ -128,7 +128,7 @@ function Test-TlsProtocols {
     param(
         [Parameter(Mandatory)][string]$Server,
         [int32[]]$Ports = 443,
-        [ValidateSet("PSObject", "Csv", "HashTable", "Json", "OrderedDictionary", "Xml")]
+        [ValidateSet("PSObject", "Csv", "Json", "OrderedDictionary", "Xml")]
         [String]$OutputFormat = "PSObject",
         [string[]]$ProtocolNames,
         [switch]$ExportRemoteCertificate,
@@ -284,7 +284,6 @@ function Test-TlsProtocols {
                 # Various switches to generate output in desired format of choice
                 switch ($OutputFormat) {
                     "Csv" { [PSCustomObject]$ProtocolStatus | ConvertTo-Csv -NoTypeInformation }
-                    "HashTable" { [hashtable]$ProtocolStatus }
                     "Json" { [PSCustomObject]$ProtocolStatus | ConvertTo-Json }
                     "OrderedDictionary" { $ProtocolStatus }
                     "PSObject" { [PSCustomObject]$ProtocolStatus }
@@ -293,4 +292,6 @@ function Test-TlsProtocols {
             }
         }
     }
-}
+} # Test-TlsProtocols
+
+Export-ModuleMember -Function Test-TlsProtocols
