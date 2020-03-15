@@ -127,9 +127,10 @@ function Test-TlsProtocols {
     param(
         [Parameter(Mandatory)][string]$Server,
         [int32[]]$Port = 443,
+        [string[]]$ProtocolName,
+        [string]$InputCsvFilePath,
         [ValidateSet("PSObject", "Csv", "Json", "OrderedDictionary", "Xml")]
         [String]$OutputFormat = "PSObject",
-        [string[]]$ProtocolName,
         [switch]$ExportRemoteCertificate,
         [switch]$IncludeErrorMessages,
         [switch]$IncludeRemoteCertificateInfo,
@@ -277,10 +278,11 @@ function Test-TlsProtocols {
                 else {
                     # Supported Tls protocols are unknown when a connection cannot be established.
                     Write-Verbose "Supported Tls protocols are unknown when a connection cannot be established."
-                    foreach ($ProtocolName in $ProtocolNames) {
-                        $ProtocolStatus.Add($ProtocolName, 'unknown')
+                    $ProtocolName.ForEach{
+                        $Name = $_
+                        $ProtocolStatus.Add($Name, 'unknown')
                         if ($IncludeErrorMessages) {
-                            $ProtocolStatus.Add("$ProtocolName`ErrorMsg", "Could not connect to $server on TCP port $port`.")
+                            $ProtocolStatus.Add("$Name`ErrorMsg", "Could not connect to $server on TCP port $p`.")
                         }
                     }
                 }
