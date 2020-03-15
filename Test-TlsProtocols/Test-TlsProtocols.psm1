@@ -30,10 +30,10 @@
     * Dns will resolve an ip address to a fully qualified domain name.
     * Using an IP address will technically work, though, a DNS lookup to resolve the server FDQN will be used. If an IP address hosts multiple servers, an unpredictable FQDN will get selected as the FQDN to test. The end result may not get routed to the correct server.
 
-.PARAMETER Ports
+.PARAMETER Port
     A list of remote ports to connect to. The default is 443. Each additional port will return another result.
 
-.PARAMETER ProtocolNames
+.PARAMETER ProtocolName
     A list of protocols to test. Requires that the client system supports each protocol to test.
     Some common examples: Tls13, Tls12, Tls11, Tls, Ssl3, Ssl2
 
@@ -59,7 +59,6 @@
     This will convert the results to the corresponding output object, and if appropriate, and format. See below for a description of what each option returns as. The default is PSObject.
 
     Csv returns a System.String object in CSV format.
-    HashTable returns a System.Collections.Hashtable object.
     Json returns a System.String object in JSON format.
     OrderedDictionary returns a System.Collections.Specialized.OrderedDictionary object.
     PSObject returns a System.Management.Automation.PSCustomObject object.
@@ -127,10 +126,10 @@ function Test-TlsProtocols {
     [cmdletbinding(SupportsShouldProcess)]
     param(
         [Parameter(Mandatory)][string]$Server,
-        [int32[]]$Ports = 443,
+        [int32[]]$Port = 443,
         [ValidateSet("PSObject", "Csv", "Json", "OrderedDictionary", "Xml")]
         [String]$OutputFormat = "PSObject",
-        [string[]]$ProtocolNames,
+        [string[]]$ProtocolName,
         [switch]$ExportRemoteCertificate,
         [switch]$IncludeErrorMessages,
         [switch]$IncludeRemoteCertificateInfo,
@@ -143,12 +142,12 @@ function Test-TlsProtocols {
         # Check all Ssl/Tls protocols
         $SupportedProtocolNames = ([System.Security.Authentication.SslProtocols]).GetEnumValues().Where{ $_ -ne 'Default' -and $_ -ne 'None' }
         Write-Verbose "Supported tls protocols:"
-        $SupportedProtocolNames | ForEach-Object { Write-Verbose "$_" }
-        if (-not $ProtocolNames) {
+        $SupportedProtocolNames.ForEach{ Write-Verbose $_ }
+        if (-not $ProtocolName){
             Write-Verbose "No tls protocols specified. Defaulting to test all support tls protocols."
-            $ProtocolNames = $SupportedProtocolNames
+            $ProtocolName = $SupportedProtocolNames
         }
-        elseif ($UnsupportedProtocolNames = $ProtocolNames.Where{ $_ -notin $SupportedProtocolNames }) {
+        elseif ($UnsupportedProtocolNames = $ProtocolName.Where{ $_ -notin $SupportedProtocolNames }) {
             Write-Verbose "Unsupported tls protocol(s) specified. Unable to complete request. "
             Write-Error -ErrorAction Stop (
                 "Unknown protocol name(s). Please use names from the list of protocol names supported on this system ({0}). You used: {1}" -f
@@ -159,36 +158,41 @@ function Test-TlsProtocols {
 
         # Resolve input
         if ($Server -as [IPAddress]) {
-            $Fqdn = [System.Net.DNS]::GetHostByAddress($Server).HostName
-            $Ip = $Server
-            Write-Verbose "Server is an IP address with FQDN: $Fqdn"
+            try {
+                $Fqdn = [System.Net.DNS]::GetHostByAddress($Server).HostName
+                $Ip = $Server
+                Write-Verbose "Server is an IP address with FQDN: $Fqdn"
+            } catch {
+                Write-Error "Unable to resolve IP address $Server to fqdn."
+            }
         }
         else {
             $Fqdn = $Server
-            $Ip = [System.Net.DNS]::GetHostByName($Server).AddressList.IPAddressToString | Select-Object -First 1
-            Write-Verbose "Server is an FQDN with IP: $ip"
+            $Ip = [System.Net.DNS]::GetHostByName($Server).AddressList.IPAddressToString -join ", "
+            Write-Verbose "Server is an FQDN with the following IP addresses: $ip"
         }
     }
     process {
         # TO-DO: Add option to enable RemoteCertificateValidationCallback (current implementation accepts all certificates)
-        Write-Verbose "Scanning $($ports.count) ports:"
-        $ports | ForEach-Object { Write-Verbose "$_" }
-        foreach ($Port in $Ports) {
-            # Create Custom Object to store TLS Protocol Status
+        Write-Verbose "Scanning $($port.count) ports:"
+        $Port.ForEach{ Write-Verbose $_ }
+
+        $Port.ForEach{
+            $p = $_
             $ProtocolStatus = [Ordered]@{
                 Fqdn = $Fqdn
                 IP   = $Ip
-                Port = $Port
+                Port = $p
             }
-            [PSCustomObject]$ProtocolStatus | ForEach-Object { Write-Verbose "$_" }
-            if ($pscmdlet.ShouldProcess($Server, "Test the following protocols: $ProtocolNames")) {
+            [PSCustomObject]$ProtocolStatus.ForEach{ Write-Verbose $_ }
+            if ($pscmdlet.ShouldProcess($Server, "Test the following protocols: $Name")) {
                 if ($PSVersionTable.PSVersion.Major -ge 6) {
-                    $OpenPort = Test-Connection $Server -TCPPort $Port -TimeoutSeconds $TimeoutSeconds
+                    $OpenPort = Test-Connection $Server -TCPPort $p -TimeoutSeconds $TimeoutSeconds
                 }
                 else {
-                    $OpenPort = (Test-NetConnection $Server -Port $Port).TcpTestSucceeded
+                    $OpenPort = (Test-NetConnection $Server -Port $p).TcpTestSucceeded
                 }
-                Write-Verbose "Connection to $Server`:$Port is available - $OpenPort"
+                Write-Verbose "Connection to $Server`:$p is available - $OpenPort"
                 if ($OpenPort) {
                     # Retrieve remote certificate information when IncludeRemoteCertificateInfo switch is enabled.
                     if ($IncludeRemoteCertificateInfo) {
@@ -202,24 +206,24 @@ function Test-TlsProtocols {
                             SignatureAlgorithm    = 'unknown'
                         }
                     }
-
-                    foreach ($ProtocolName in $ProtocolNames) {
-                        Write-Verbose "Starting test on $ProtocolName"
-                        $ProtocolStatus.Add($ProtocolName, 'unknown')
+                    $ProtocolName.ForEach{
+                        $Name = $_
+                        Write-Verbose "Starting test on $Name"
+                        $ProtocolStatus.Add($Name, 'unknown')
                         if ($IncludeErrorMessages) {
-                            $ProtocolStatus.Add("$ProtocolName`ErrorMsg", $false)
+                            $ProtocolStatus.Add("$Name`ErrorMsg", $false)
                         }
                         try {
                             $Socket = [System.Net.Sockets.Socket]::new([System.Net.Sockets.SocketType]::Stream, [System.Net.Sockets.ProtocolType]::Tcp)
-                            Write-Verbose "Attempting socket connection to $fqdn`:$port"
-                            $Socket.Connect($fqdn, $Port)
+                            Write-Verbose "Attempting socket connection to $fqdn`:$p"
+                            $Socket.Connect($fqdn, $p)
                             Write-Verbose "Connection succeeded."
                             $NetStream = [System.Net.Sockets.NetworkStream]::new($Socket, $true)
                             $SslStream = [System.Net.Security.SslStream]::new($NetStream, $true, { $true }) # Ignore certificate validation errors
-                            Write-Verbose "Attempting to authenticate to $fqdn as a client over $ProtocolName"
-                            $SslStream.AuthenticateAsClient($fqdn, $null, $ProtocolName, $false)
-                            $ProtocolStatus[$ProtocolName] = $true # success
-                            Write-Verbose "Successfully authenticated to $fqdn`:$port"
+                            Write-Verbose "Attempting to authenticate to $fqdn as a client over $Name"
+                            $SslStream.AuthenticateAsClient($fqdn, $null, $Name, $false)
+                            $ProtocolStatus[$Name] = $true # success
+                            Write-Verbose "Successfully authenticated to $fqdn`:$p"
                             $RemoteCertificate = [System.Security.Cryptography.X509Certificates.X509Certificate2]$SslStream.RemoteCertificate
 
                             if ($IncludeRemoteCertificateInfo) {
@@ -249,8 +253,8 @@ function Test-TlsProtocols {
                             }
                         }
                         catch {
-                            $ProtocolStatus[$ProtocolName] = $false # failed to establish tls connection
-                            Write-Verbose "Unable to establish tls connection with $fqdn`:$port over $ProtocolName"
+                            $ProtocolStatus[$Name] = $false # failed to establish tls connection
+                            Write-Verbose "Unable to establish tls connection with $fqdn`:$p over $Name"
                             # Collect detailed error message about why the tls connection failed
                             if ($IncludeErrorMessages) {
                                 $e = $error[0]
@@ -258,7 +262,7 @@ function Test-TlsProtocols {
                                 if ($NestedException) { $emsg = $NestedException }
                                 else { $emsg = $e.Exception.InnerException.Message }
                                 Write-Verbose $emsg
-                                $ProtocolStatus["$ProtocolName`ErrorMsg"] = $emsg
+                                $ProtocolStatus["$Name`ErrorMsg"] = $emsg
                             }
                         }
                         finally {
@@ -280,12 +284,12 @@ function Test-TlsProtocols {
                         }
                     }
                 }
-
+    
                 # Various switches to generate output in desired format of choice
                 switch ($OutputFormat) {
                     "Csv" { [PSCustomObject]$ProtocolStatus | ConvertTo-Csv -NoTypeInformation }
                     "Json" { [PSCustomObject]$ProtocolStatus | ConvertTo-Json }
-                    "OrderedDictionary" { $ProtocolStatus }
+                    "OrderedDictionary" { $ProtocolStatus } # Ordered HashTable
                     "PSObject" { [PSCustomObject]$ProtocolStatus }
                     "Xml" { [PSCustomObject]$ProtocolStatus | ConvertTo-Xml -NoTypeInformation }
                 }
