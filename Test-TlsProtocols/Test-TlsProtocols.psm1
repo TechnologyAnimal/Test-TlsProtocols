@@ -163,8 +163,11 @@ function Test-TlsProtocols {
                 $Fqdn = [System.Net.DNS]::GetHostByAddress($Server).HostName
                 $Ip = $Server
                 Write-Verbose "Server is an IP address with FQDN: $Fqdn"
-            } catch {
-                Write-Error "Unable to resolve IP address $Server to fqdn."
+            } 
+            # TO-DO: Should skip process block, but the code gets messy when accounting for all switches to keep objects the same.
+            # This is important when results are exported to a csv file.
+            catch {
+                Write-Verbose "Unable to resolve IP address $Server to fqdn."
             }
         }
         else {
