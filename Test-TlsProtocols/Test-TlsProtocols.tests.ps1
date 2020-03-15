@@ -23,11 +23,10 @@ InModuleScope $ThisModuleName {
                 { Test-TlsProtocols -Server '8.8.8.8' -Port 66000 } | Should throw
             }
         }
-        # TO-DO Add tests until code coverage is greater than 80%.
     }
     Describe Export-ProtocolStatus {
         context 'Input' {
-            $ProtocolStatus = [PSCustomObject][Ordered]@{
+            $ProtocolStatus = [Ordered]@{
                 Fqdn = 'google.com'
                 Ip = '216.58.193.78, 2001:4860:4802:34::75'
                 Port = '443'
@@ -38,18 +37,28 @@ InModuleScope $ThisModuleName {
                 Tls12 = $true
                 Tls13 = $false
             }
-            $json = $ProtocolStatus | ConvertTo-Json
-            $csv = $ProtocolStatus | ConvertTo-Csv -NoTypeInformation
+            $json = [PSCustomObject]$ProtocolStatus | ConvertTo-Json
+            $csv = ([PSCustomObject]$ProtocolStatus | ConvertTo-Csv -NoTypeInformation)
+            $xml = [PSCustomObject]$ProtocolStatus | ConvertTo-Xml -NoTypeInformation
+            $psobject = [PSCustomObject]$ProtocolStatus
             it 'when $OutputFormat is Json, should return JSON format' {
-                Export-ProtocolStatus -ProtocolStatus $ProtocolStatus -OutputFormat 'Json' | Should Be $json
+                Export-ProtocolStatus -ProtocolStatus $ProtocolStatus -OutputFormat 'Json' | Should Match $json
             }
 
             it 'when $OutputFormat is Csv, should return CSV format' {
                 Export-ProtocolStatus -ProtocolStatus $ProtocolStatus -OutputFormat 'Csv' | Should Be $csv
             }
 
-            it 'when $OutputFormat is provided, should return null' {
-                Export-ProtocolStatus -ProtocolStatus $ProtocolStatus -OutputFormat 'Json' | Should Not Be $null
+            it 'when $OutputFormat is OrderedDictionary, should return OrderedDictionary' {
+                Export-ProtocolStatus -ProtocolStatus $ProtocolStatus -OutputFormat 'OrderedDictionary' | Should Match $ProtocolStatus
+            }
+
+            it 'when $OutputFormat is XML, should return XML' {
+                Export-ProtocolStatus -ProtocolStatus $ProtocolStatus -OutputFormat 'Xml' | Should Match $xml
+            }
+
+            it 'when $OutputFormat is NOT provided, should return PSObject' {
+                Export-ProtocolStatus -ProtocolStatus $ProtocolStatus | Should Match $psobject
             }
         }
         # TO-DO Add tests until code coverage is greater than 80%.

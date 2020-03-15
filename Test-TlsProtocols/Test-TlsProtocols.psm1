@@ -296,17 +296,21 @@ function Export-ProtocolStatus {
     [CmdletBinding()]
     param (
         $ProtocolStatus,
-        $OutputFormat = 'PSObject'
+        $OutputFormat
     )
     
     process {
-        # Various switches to generate output in desired format of choice
-        switch ($OutputFormat) {
-            "Csv" { [PSCustomObject]$ProtocolStatus | ConvertTo-Csv -NoTypeInformation }
-            "Json" { [PSCustomObject]$ProtocolStatus | ConvertTo-Json }
-            "OrderedDictionary" { $ProtocolStatus } # Ordered HashTable
-            "PSObject" { [PSCustomObject]$ProtocolStatus }
-            "Xml" { [PSCustomObject]$ProtocolStatus | ConvertTo-Xml -NoTypeInformation }
+        if ([string]::IsNullOrWhiteSpace($OutputFormat)) {
+            [PSCustomObject]$ProtocolStatus
+        } else {
+            # Various switches to generate output in desired format of choice
+            switch ($OutputFormat) {
+                "Csv" { [PSCustomObject]$ProtocolStatus | ConvertTo-Csv -NoTypeInformation }
+                "Json" { [PSCustomObject]$ProtocolStatus | ConvertTo-Json }
+                "OrderedDictionary" { $ProtocolStatus } # Ordered HashTable
+                "PSObject" { [PSCustomObject]$ProtocolStatus }
+                "Xml" { [PSCustomObject]$ProtocolStatus | ConvertTo-Xml -NoTypeInformation }
+            }
         }
     }
 }
