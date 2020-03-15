@@ -9,8 +9,18 @@ InModuleScope $ThisModuleName {
             it 'when invalid protocol name is used for input, should throw exception' {
                 { Test-TlsProtocols -Server 'google.com' -Port 443 -ProtocolName 'invalidprotocol' } | Should throw
             }
-            it 'when invalid protocol name is used for input, should throw exception' {
-                { Test-TlsProtocols -Server 'google.com' -Port 443 -ProtocolName 'invalidprotocol' } | Should throw
+            it 'when valid protocol name is used for input, should NOT throw exception' {
+                { Test-TlsProtocols -Server 'google.com' -Port 443 -ProtocolName 'Tls12' } | Should Not throw
+            }
+            it 'when invalid IP address is used for input, should throw exception' {
+                { Test-TlsProtocols -Server '1.2.3.4.5' -Port 443 } | Should throw
+            }
+            it 'when valid IP address is used for input, should NOT throw exception' {
+                { Test-TlsProtocols -Server '8.8.8.8' -Port 443 } | Should Not throw
+            }
+
+            it 'when invalid port is used for input, should throw exception' {
+                { Test-TlsProtocols -Server '8.8.8.8' -Port 66000 } | Should throw
             }
         }
         # TO-DO Add tests until code coverage is greater than 80%.

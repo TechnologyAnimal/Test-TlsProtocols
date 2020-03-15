@@ -126,9 +126,9 @@ function Test-TlsProtocols {
     [cmdletbinding(SupportsShouldProcess)]
     param(
         [Parameter(Mandatory)][string]$Server,
+        [ValidateRange(1,65535)]
         [int32[]]$Port = 443,
         [string[]]$ProtocolName,
-        [string]$InputCsvFilePath,
         [ValidateSet("PSObject", "Csv", "Json", "OrderedDictionary", "Xml")]
         [String]$OutputFormat = "PSObject",
         [switch]$ExportRemoteCertificate,
