@@ -25,6 +25,9 @@
 .LINK
     https://github.com/TechnologyAnimal/Test-TlsProtocols
 
+.LINK
+    https://www.powershellgallery.com/packages/Test-TlsProtocols/1.0.0
+
 .PARAMETER Server
     The fully qualified domain name or IP address of the remote computer to connect to.
     * Dns will resolve an ip address to a fully qualified domain name.
