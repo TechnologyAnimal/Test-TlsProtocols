@@ -62,17 +62,28 @@ function Invoke-TlsProtocolTest {
             $server = $record.server
             $port = $record.port
             $dictitonary = $using:ConcurrentDictionary
-            Write-Verbose "Fqdn: $fqdn"
-            Write-Verbose "Ports: $ports"
+            Write-Verbose "Server: $server"
+            Write-Verbose "Port: $port"
             Import-Module "Test-TlsProtocols"
             $tempDir = $using:Guid
             $osSlash = $using:slash
-            $hashtable = Test-TlsProtocols -Server $server -Port $Port -IncludeRemoteCertificateInfo
-            $tempFile = $tempDir + $osSlash + $(New-Guid).Guid + '.csv'
-            Write-Verbose $tempFile
-            $dictitonary.TryAdd($server,$hashtable)
-            $psobject = [PSCustomObject]$hashtable
-            Export-Csv $tempFile -InputObject $psobject -Encoding utf8
+            try {
+                $job = Start-Job -ScriptBlock { Test-TlsProtocols -Server $args[0] -Port $args[1] -IncludeRemoteCertificateInfo -IncludeErrorMessages } -ArgumentList $server, $port |
+                    Wait-Job -Timeout 30
+            }
+            catch {
+                Add-Content Errors.txt -Value "$server - $port"
+            }
+            if ($job.State -eq 'Completed') {
+                $hashtable = Receive-Job $job
+                Remove-Job $job
+                $tempFile = $tempDir + $osSlash + $(New-Guid).Guid + '.csv'
+                Write-Verbose $tempFile
+                $dictitonary.TryAdd($server,$hashtable)
+                $psobject = [PSCustomObject]$hashtable
+                Export-Csv $tempFile -InputObject $psobject -Encoding utf8
+            }
+            
         } -ThrottleLimit $ThrottleLimit
         Get-ChildItem $Guid -Filter *.csv | Select-Object -ExpandProperty FullName | Import-Csv | Export-Csv $OutputCsvFilePath -NoTypeInformation -Append
         Remove-Item $Guid -Recurse
