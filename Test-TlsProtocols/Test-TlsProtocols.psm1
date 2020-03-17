@@ -136,6 +136,7 @@ function Test-TlsProtocols {
         [String]$OutputFormat = "PSObject",
         [switch]$ExportRemoteCertificate,
         [switch]$IncludeErrorMessages,
+        [switch]$IncludeCipherInfo,
         [switch]$IncludeRemoteCertificateInfo,
         [switch]$ReturnRemoteCertificateOnly,
         [ValidateSet(1, 2, 3, 4, 5)][int32]$TimeoutSeconds = 2
@@ -213,6 +214,14 @@ function Test-TlsProtocols {
                             SignatureAlgorithm    = 'unknown'
                         }
                     }
+
+                    if ($IncludeCipherInfo) {
+                        $ProtocolStatus += [ordered]@{
+                            NegotiatedCipherSuite = 'unknown'
+                            CipherAlgorithm    = 'unknown'
+                            CipherStrength     = 'unknown'
+                        }
+                    }
                     $ProtocolName.ForEach{
                         $Name = $_
                         Write-Verbose "Starting test on $Name"
@@ -243,6 +252,12 @@ function Test-TlsProtocols {
                                     $ProtocolStatus["CertificateExpires"] = $RemoteCertificate.NotAfter
                                     $ProtocolStatus["SignatureAlgorithm"] = $RemoteCertificate.SignatureAlgorithm.FriendlyName
                                 }
+                            }
+
+                            if ($IncludeCipherInfo) {
+                                $ProtocolStatus["NegotiatedCipherSuite"] = $SslStream.NegotiatedCipherSuite
+                                $ProtocolStatus["CipherAlgorithm"]    = $SslStream.CipherAlgorithm
+                                $ProtocolStatus["CipherStrength"]     = $SslStream.CipherStrength
                             }
 
                             if ($ExportRemoteCertificate) {
