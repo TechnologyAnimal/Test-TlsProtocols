@@ -26,7 +26,7 @@
     https://github.com/TechnologyAnimal/Test-TlsProtocols
 
 .LINK
-    https://www.powershellgallery.com/packages/Test-TlsProtocols/1.0.0
+    https://www.powershellgallery.com/packages/Test-TlsProtocols
 
 .PARAMETER Server
     The fully qualified domain name or IP address of the remote computer to connect to.
@@ -50,6 +50,10 @@
 .PARAMETER ReturnRemoteCertificateOnly
     Enabling this switch will only return the remote system's certificate as a System.Security.Cryptography.X509Certificates.X509Certificate2 object.
 
+.PARAMETER IgnoreCertificateValidation
+    Enabling this switch will skip certificate validation when establishing TLS connections. By default, certificate
+    validation is enforced. Use this switch only when testing systems with self-signed or otherwise untrusted certificates.
+
 .PARAMETER ExportRemoteCertificate
     Enabling this switch will export the remote system's certificate as a $fqdn.cer file in the path of this script.
 
@@ -71,59 +75,62 @@
     This will list the Server, Ports, and ProtocolNames that would get tested if this switch is omitted or set to false.
 
 .EXAMPLE
-    Test-TlsProtocols -Server "github.com" -IncludeRemoteCertificateInfo
+    Test-TlsProtocols -Server "github.com" -ProtocolName "Tls12"
 
     Fqdn                  : github.com
-    IP                    : 192.30.253.113
+    IP                    : 140.82.116.4
     Port                  : 443
-    CertificateThumbprint : CA06F56B258B7A0D4F2B05470939478651151984
-    CertificateSubject    : CN=github.com, O="GitHub, Inc.", L=San Francisco, S=California, C=US, SERIALNUMBER=5157550, OID.1.3.6.1.4.1.311.60.2.1.2=Delaware, OID.1.3.6.1.4.1.311.60.2.1.3=US, OID.2.5.4.15=Private
-                            Organization
-    CertificateIssuer     : CN=DigiCert SHA2 Extended Validation Server CA, OU=www.digicert.com, O=DigiCert Inc, C=US
-    CertificateIssued     : 5/7/2018 5:00:00 PM
-    CertificateExpires    : 6/3/2020 5:00:00 AM
-    SignatureAlgorithm    : sha256RSA
-    Ssl2                  : False
-    Ssl3                  : False
-    Tls                   : False
-    Tls11                 : False
     Tls12                 : True
-    Tls13                 : True
+    NegotiatedCipherSuite : TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256
+    CipherAlgorithm       : Aes128
+    CipherStrength        : 128
+    KeyExchangeAlgorithm  : DiffieHellman
+    KeyExchangeStrength   : 0
+    HashAlgorithm         : None
+    HashStrength          : 0
 
 .EXAMPLE
-    Test-TlsProtocols -Server "github.com" -OutputFormat PSObject
+    Test-TlsProtocols -Server "github.com" -ProtocolName "Tls12" -IncludeRemoteCertificateInfo
 
-    Fqdn  : github.com
-    IP    : 140.82.114.3
-    Port  : 443
-    Ssl2  : False
-    Ssl3  : False
-    Tls   : False
-    Tls11 : False
-    Tls12 : True
-    Tls13 : True
+    Fqdn                  : github.com
+    IP                    : 140.82.116.4
+    Port                  : 443
+    CertificateThumbprint : AB58EA128BA92CA69A31B36B4E545653EED2A6CF
+    CertificateSubject    : CN=github.com
+    CertificateIssuer     : CN=Sectigo Public Server Authentication CA DV E36, O=Sectigo Limited, C=GB
+    SignatureAlgorithm    : sha256ECDSA
+    Tls12                 : True
+    NegotiatedCipherSuite : TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256
+    CipherAlgorithm       : Aes128
+    CipherStrength        : 128
+    KeyExchangeAlgorithm  : DiffieHellman
+    KeyExchangeStrength   : 0
+    HashAlgorithm         : None
+    HashStrength          : 0
 
 .EXAMPLE
-    Test-TlsProtocols -Server "google.com" -OutputFormat Json
+    Test-TlsProtocols -Server "google.com" -ProtocolName "Tls12" -OutputFormat Json
 
     {
         "Fqdn": "google.com",
-        "IP": "216.239.34.117",
+        "IP": "142.251.219.14",
         "Port": 443,
-        "Ssl2": false,
-        "Ssl3": false,
-        "Tls": true,
-        "Tls11": true,
         "Tls12": true,
-        "Tls13": true
+        "NegotiatedCipherSuite": "TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256",
+        "CipherAlgorithm": "Aes128",
+        "CipherStrength": 128,
+        "KeyExchangeAlgorithm": "DiffieHellman",
+        "KeyExchangeStrength": 0,
+        "HashAlgorithm": "None",
+        "HashStrength": 0
     }
 
-.Example
+.EXAMPLE
     Test-TlsProtocols -Server "google.com" -ReturnRemoteCertificateOnly
 
     Thumbprint                                Subject              EnhancedKeyUsageList
     ----------                                -------              --------------------
-    7D0384E3195E04043DBED29FF58815857278240C  CN=*.google.com, O=…
+    DE18EF3196486126478F5FEE5FC57EA70F3150C1  CN=*.google.com      {Server Authentication (1.3.6.1.5.5.7.3.1)}
 #>
 function Test-TlsProtocols {
     [cmdletbinding(SupportsShouldProcess)]
@@ -138,6 +145,7 @@ function Test-TlsProtocols {
         [switch]$IncludeErrorMessages,
         [switch]$IncludeRemoteCertificateInfo,
         [switch]$ReturnRemoteCertificateOnly,
+        [switch]$IgnoreCertificateValidation,
         [ValidateSet(1, 2, 3, 4, 5)][int32]$TimeoutSeconds = 2
     )
     begin {
@@ -161,9 +169,60 @@ function Test-TlsProtocols {
         }
 
         # Resolve input
+        # Warn about deprecated protocols
+        $DeprecatedProtocols = @('Ssl2', 'Ssl3', 'Tls', 'Tls11')
+        $RequestedDeprecated = $ProtocolName.Where{ $_ -in $DeprecatedProtocols }
+        if ($RequestedDeprecated) {
+            Write-Warning ("The following protocols are deprecated and insecure (RFC 8996): {0}. Consider using Tls12 or Tls13." -f ($RequestedDeprecated -join ', '))
+        }
+
+        # FIPS 140-3 approved cipher suites per NIST SP 800-52 Rev 2.
+        # See FIPS.md for the full reference and rationale.
+        $FIPSApprovedCipherSuites = @(
+            # TLS 1.2 required (ECDHE + AES-GCM)
+            'TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256'
+            'TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384'
+            'TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256'
+            'TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384'
+            # TLS 1.2 recommended (ECDHE + AES-CBC)
+            'TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA256'
+            'TLS_ECDHE_ECDSA_WITH_AES_256_CBC_SHA384'
+            'TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA256'
+            'TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA384'
+            # TLS 1.2 recommended (DHE + AES-GCM)
+            'TLS_DHE_RSA_WITH_AES_128_GCM_SHA256'
+            'TLS_DHE_RSA_WITH_AES_256_GCM_SHA384'
+            # TLS 1.3 (AES-GCM only; ChaCha20 is not FIPS-approved)
+            'TLS_AES_128_GCM_SHA256'
+            'TLS_AES_256_GCM_SHA384'
+            'TLS_AES_128_CCM_SHA256'
+        )
+
+        # Parse URL if a full URL was provided (e.g. https://host:port/path)
+        # TLS handshakes use only host+port; the path is an HTTP-layer concept and is ignored.
+        if ($Server -match '^https?://') {
+            try {
+                $ParsedUri = [System.Uri]::new($Server)
+                Write-Verbose "Parsed URL: host=$($ParsedUri.Host), port=$($ParsedUri.Port), path=$($ParsedUri.AbsolutePath) (path ignored)"
+                $Server = $ParsedUri.Host
+                if ($ParsedUri.Port -and $ParsedUri.Port -ne 443 -and $ParsedUri.Port -ne -1) {
+                    $Port = @($ParsedUri.Port)
+                }
+            }
+            catch {
+                Write-Warning "Unable to parse URL '$Server'. Using as-is."
+            }
+        }
+        elseif ($Server -match '^([^/:]+):(\d+)') {
+            # Handle host:port/path without scheme
+            $Server = $Matches[1]
+            $Port = @([int32]$Matches[2])
+            Write-Verbose "Parsed host:port — server=$Server, port=$Port"
+        }
+
         if ($Server -as [IPAddress]) {
             try {
-                $Fqdn = [System.Net.DNS]::GetHostByAddress($Server).HostName
+                $Fqdn = [System.Net.DNS]::GetHostEntry($Server).HostName
                 $Ip = $Server
                 Write-Verbose "Server is an IP address with FQDN: $Fqdn"
             } 
@@ -175,12 +234,19 @@ function Test-TlsProtocols {
         }
         else {
             $Fqdn = $Server
-            $Ip = [System.Net.DNS]::GetHostByName($Server).AddressList.IPAddressToString -join ", "
-            Write-Verbose "Server is an FQDN with the following IP addresses: $ip"
+            try {
+                $DnsEntry = [System.Net.DNS]::GetHostEntry($Server)
+                if ($DnsEntry.AddressList) {
+                    $Ip = $DnsEntry.AddressList.IPAddressToString -join ", "
+                }
+                Write-Verbose "Server is an FQDN with the following IP addresses: $Ip"
+            }
+            catch [System.Net.Sockets.SocketException] {
+                Write-Error -ErrorAction Stop "Unable to resolve server '$Server': $($_.Exception.Message)"
+            }
         }
     }
     process {
-        # TO-DO: Add option to enable RemoteCertificateValidationCallback (current implementation accepts all certificates)
         Write-Verbose "Scanning $($port.count) ports:"
         $Port.ForEach{ Write-Verbose $_ }
 
@@ -192,12 +258,18 @@ function Test-TlsProtocols {
                 Port = $p
             }
             [PSCustomObject]$ProtocolStatus.ForEach{ Write-Verbose $_ }
-            if ($pscmdlet.ShouldProcess($Server, "Test the following protocols: $Name")) {
-                if ($PSVersionTable.PSVersion.Major -ge 6) {
-                    $OpenPort = Test-Connection $Server -TCPPort $p -TimeoutSeconds $TimeoutSeconds
+            if ($pscmdlet.ShouldProcess($Server, "Test the following protocols: $($ProtocolName -join ', ')")) {
+                try {
+                    if ($PSVersionTable.PSVersion.Major -ge 6) {
+                        $OpenPort = Test-Connection $Server -TCPPort $p -TimeoutSeconds $TimeoutSeconds
+                    }
+                    else {
+                        $OpenPort = (Test-NetConnection $Server -Port $p).TcpTestSucceeded
+                    }
                 }
-                else {
-                    $OpenPort = (Test-NetConnection $Server -Port $p).TcpTestSucceeded
+                catch {
+                    $OpenPort = $false
+                    Write-Verbose "Port test failed: $($_.Exception.Message)"
                 }
                 Write-Verbose "Connection to $Server`:$p is available - $OpenPort"
                 if ($OpenPort) {
@@ -226,11 +298,43 @@ function Test-TlsProtocols {
                             $Socket.Connect($fqdn, $p)
                             Write-Verbose "Connection succeeded."
                             $NetStream = [System.Net.Sockets.NetworkStream]::new($Socket, $true)
-                            $SslStream = [System.Net.Security.SslStream]::new($NetStream, $true, { $true }) # Ignore certificate validation errors
+                            if ($IgnoreCertificateValidation) {
+                                $SslStream = [System.Net.Security.SslStream]::new($NetStream, $true, { $true })
+                            }
+                            else {
+                                $SslStream = [System.Net.Security.SslStream]::new($NetStream, $true)
+                            }
                             Write-Verbose "Attempting to authenticate to $fqdn as a client over $Name"
                             $SslStream.AuthenticateAsClient($fqdn, $null, $Name, $false)
                             $ProtocolStatus[$Name] = $true # success
                             Write-Verbose "Successfully authenticated to $fqdn`:$p"
+
+                            # Report negotiated cipher suite information if available
+                            if ($PSVersionTable.PSVersion.Major -ge 6) {
+                                try {
+                                    $NegotiatedSuite = $SslStream.NegotiatedCipherSuite.ToString()
+                                    $ProtocolStatus["NegotiatedCipherSuite"] = $NegotiatedSuite
+                                    $ProtocolStatus["FIPSCompliant"] = $NegotiatedSuite -in $FIPSApprovedCipherSuites
+                                    Write-Verbose "Negotiated cipher suite: $NegotiatedSuite (FIPS: $($ProtocolStatus['FIPSCompliant']))"
+                                }
+                                catch {
+                                    Write-Verbose "NegotiatedCipherSuite property not available on this runtime."
+                                }
+                            }
+                            if (-not $ProtocolStatus.Contains("CipherAlgorithm")) {
+                                try {
+                                    $ProtocolStatus["CipherAlgorithm"] = $SslStream.CipherAlgorithm.ToString()
+                                    $ProtocolStatus["CipherStrength"] = $SslStream.CipherStrength
+                                    $ProtocolStatus["KeyExchangeAlgorithm"] = $SslStream.KeyExchangeAlgorithm.ToString()
+                                    $ProtocolStatus["KeyExchangeStrength"] = $SslStream.KeyExchangeStrength
+                                    $ProtocolStatus["HashAlgorithm"] = $SslStream.HashAlgorithm.ToString()
+                                    $ProtocolStatus["HashStrength"] = $SslStream.HashStrength
+                                }
+                                catch {
+                                    Write-Verbose "Detailed cipher properties not available on this platform: $($_.Exception.Message)"
+                                }
+                            }
+
                             $RemoteCertificate = [System.Security.Cryptography.X509Certificates.X509Certificate2]$SslStream.RemoteCertificate
 
                             if ($IncludeRemoteCertificateInfo) {
@@ -249,7 +353,12 @@ function Test-TlsProtocols {
                                 $CertPath = "$fqdn.cer"
                                 if (-not (Test-Path $CertPath)) {
                                     Write-Host "Exporting $fqdn.cer to $($(Get-Location).path)" -ForegroundColor Green
-                                    $RemoteCertificate.Export('Cert') | Set-Content "$fqdn.cer" -AsByteStream
+                                    if ($PSVersionTable.PSVersion.Major -ge 6) {
+                                        $RemoteCertificate.Export('Cert') | Set-Content "$fqdn.cer" -AsByteStream
+                                    }
+                                    else {
+                                        $RemoteCertificate.Export('Cert') | Set-Content "$fqdn.cer" -Encoding Byte
+                                    }
                                 }
                             }
 
@@ -264,10 +373,9 @@ function Test-TlsProtocols {
                             Write-Verbose "Unable to establish tls connection with $fqdn`:$p over $Name"
                             # Collect detailed error message about why the tls connection failed
                             if ($IncludeErrorMessages) {
-                                $e = $error[0]
-                                $NestedException = $e.Exception.InnerException.InnerException.Message
+                                $NestedException = $_.Exception.InnerException.InnerException.Message
                                 if ($NestedException) { $emsg = $NestedException }
-                                else { $emsg = $e.Exception.InnerException.Message }
+                                else { $emsg = $_.Exception.InnerException.Message }
                                 Write-Verbose $emsg
                                 $ProtocolStatus["$Name`ErrorMsg"] = $emsg
                             }
@@ -275,9 +383,14 @@ function Test-TlsProtocols {
                         finally {
                             # Free up system memory/garbage collection
                             Write-Verbose "Garbage collection."
-                            if ($SslStream) { $SslStream.Dispose() }
-                            if ($NetStream) { $NetStream.Dispose() }
-                            if ($Socket) { $Socket.Dispose() }
+                            try {
+                                if ($SslStream) { $SslStream.Dispose() }
+                                if ($NetStream) { $NetStream.Dispose() }
+                                if ($Socket) { $Socket.Dispose() }
+                            }
+                            catch {
+                                Write-Verbose "Cleanup error: $($_.Exception.Message)"
+                            }
                         }
                     }
                 }

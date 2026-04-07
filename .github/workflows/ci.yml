@@ -1,0 +1,80 @@
+name: CI
+
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+    branches: [master, main]
+
+jobs:
+  go:
+    name: Go Build & Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Build
+        run: go build -o test-tls-protocols ./cmd/test-tls-protocols
+
+      - name: Vet
+        run: go vet ./...
+
+      - name: Unit Tests (scanner)
+        run: go test ./pkg/scanner/ -v -run TestUnit_ -count=1
+
+      - name: Unit Tests (cmd)
+        run: go test ./cmd/test-tls-protocols/ -v -count=1
+
+      - name: Unit Tests (coverage)
+        run: go test ./pkg/scanner/ -run TestUnit_ -coverprofile=coverage.out -count=1
+
+      - name: Upload coverage
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: go-coverage
+          path: coverage.out
+
+      - name: Integration Tests
+        run: go test ./pkg/scanner/ -v -tags=integration -count=1 -timeout=60s
+
+  pester:
+    name: PowerShell Pester Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Pester
+        shell: pwsh
+        run: Install-Module Pester -MinimumVersion 5.0 -Force -Scope CurrentUser
+
+      - name: Run Pester Tests
+        shell: pwsh
+        run: |
+          Import-Module Pester
+          $config = New-PesterConfiguration
+          $config.Run.Path = './Test-TlsProtocols/Test-TlsProtocols.tests.ps1'
+          $config.Output.Verbosity = 'Detailed'
+          Invoke-Pester -Configuration $config
+
+  docker:
+    name: Docker Build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build Go Docker image
+        run: docker build -f Dockerfile-go -t test-tls-protocols-go .
+
+      - name: Smoke test Go image
+        run: docker run --rm test-tls-protocols-go -server github.com -protocol Tls12
+
+      - name: Build PowerShell Docker image
+        run: docker build -f Dockerfile -t test-tls-protocols-ps .
+
+      - name: Smoke test PowerShell image
+        run: docker run --rm test-tls-protocols-ps "Import-Module Test-TlsProtocols; Test-TlsProtocols -Server 'github.com' -ProtocolName 'Tls12'"

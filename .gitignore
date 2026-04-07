@@ -1,2 +1,6 @@
 Publish-PSGallery.ps1
-Dockerfile
+/test-tls-protocols
+*.cer
+dist/
+coverage.out
+.DS_Store

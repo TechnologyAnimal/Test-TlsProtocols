@@ -32,13 +32,13 @@ function Invoke-TlsProtocolTest {
                 Write-Verbose "isMacOS: $isMacOS`."
             }
             elseif ($isLinux) {
-                [int32]$ThrottleLimit = python -c 'import multiprocessing as mp; print(mp.cpu_count())'
+                [int32]$ThrottleLimit = nproc
                 $slash = '/'
                 Write-Verbose "isLinux: $isLinux`."
             }
             else {
                 try {
-                    [int32]$ThrottleLimit = (Get-WmiObject Win32_Processor).Count
+                    [int32]$ThrottleLimit = (Get-CimInstance Win32_Processor).NumberOfLogicalProcessors
                 }
                 catch {
                     $ThrottleLimit = 5 # Microsoft's default value for ForEach-Object -Parallel

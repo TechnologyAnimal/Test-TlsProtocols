@@ -1,0 +1,17 @@
+FROM golang:1.26-alpine AS builder
+
+WORKDIR /src
+COPY go.mod ./
+COPY cmd/ cmd/
+COPY pkg/ pkg/
+
+RUN CGO_ENABLED=0 go build -ldflags="-s -w" -o /test-tls-protocols ./cmd/test-tls-protocols
+
+FROM alpine:3.20
+
+RUN apk add --no-cache ca-certificates
+
+COPY --from=builder /test-tls-protocols /usr/local/bin/test-tls-protocols
+
+ENTRYPOINT ["test-tls-protocols"]
+CMD ["-server", "github.com", "-protocol", "Tls12,Tls13"]

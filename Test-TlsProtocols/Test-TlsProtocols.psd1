@@ -12,7 +12,7 @@
 RootModule = 'Test-TlsProtocols'
 
 # Version number of this module.
-ModuleVersion = '1.0.0'
+ModuleVersion = '2.1.0'
 
 # Supported PSEditions
 CompatiblePSEditions = 'Desktop', 'Core'
@@ -72,10 +72,10 @@ ProcessorArchitecture = 'None'
 FunctionsToExport = 'Test-TlsProtocols'
 
 # Cmdlets to export from this module, for best performance, do not use wildcards and do not delete the entry, use an empty array if there are no cmdlets to export.
-CmdletsToExport = 'Test-TlsProtocols'
+CmdletsToExport = @()
 
 # Variables to export from this module
-VariablesToExport = '*'
+VariablesToExport = @()
 
 # Aliases to export from this module, for best performance, do not use wildcards and do not delete the entry, use an empty array if there are no aliases to export.
 AliasesToExport = @()

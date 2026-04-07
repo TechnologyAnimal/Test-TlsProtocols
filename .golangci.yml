@@ -1,0 +1,33 @@
+run:
+  timeout: 5m
+
+linters:
+  enable:
+    - errcheck
+    - govet
+    - staticcheck
+    - unused
+    - gosimple
+    - ineffassign
+    - typecheck
+    - gosec
+    - bodyclose
+    - nilerr
+    - exportloopref
+    - prealloc
+
+linters-settings:
+  gosec:
+    excludes:
+      - G402 # TLS InsecureSkipVerify — intentional for -ignore-cert flag
+      - G501 # Blocklisted import crypto/sha1 — used only for cert thumbprint display
+    config:
+      global:
+        audit: false
+
+issues:
+  exclude-rules:
+    - path: _test\.go
+      linters:
+        - gosec
+        - errcheck
